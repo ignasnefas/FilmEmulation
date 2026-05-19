@@ -261,6 +261,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   };
 
   const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     const imageIndex = getImageIndexAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
     if (imageIndex !== null) {
       const canvas = previewCanvasRef.current;
@@ -442,10 +443,12 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                     <div className="flex items-center justify-center bg-zinc-950/50 rounded-lg p-4 min-h-64">
                       <canvas
                         ref={previewCanvasRef}
+                        style={{ touchAction: 'none' }}
                         className="max-w-full max-h-80 rounded shadow-lg cursor-grab active:cursor-grabbing"
                         onPointerDown={handleCanvasPointerDown}
                         onPointerMove={handleCanvasPointerMove}
                         onPointerUp={handleCanvasPointerUp}
+                        onPointerCancel={handleCanvasPointerUp}
                       />
                     </div>
                   </div>
