@@ -46,7 +46,6 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   const [dragOverImageIndex, setDragOverImageIndex] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const customColorInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
   const dragImageIndexRef = useRef<number | null>(null);
@@ -595,22 +594,16 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                             aria-label={`Set background color to ${color.name}`}
                           />
                         ))}
-                        <button
-                          type="button"
-                          onClick={() => customColorInputRef.current?.click()}
-                          className="h-10 w-10 rounded-full border-2 border-zinc-700/50 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500 transition flex items-center justify-center"
-                          aria-label="Open custom color picker"
-                        >
-                          +
-                        </button>
-                        <input
-                          ref={customColorInputRef}
-                          type="color"
-                          value={settings.backgroundColor}
-                          onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
-                          className="hidden"
-                          aria-hidden="true"
-                        />
+                        <div className="relative h-10 w-10 rounded-full border-2 border-zinc-700/50 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500 transition flex items-center justify-center overflow-hidden">
+                          <span className="pointer-events-none">+</span>
+                          <input
+                            type="color"
+                            value={settings.backgroundColor}
+                            onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
+                            className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
+                            aria-label="Pick a custom background color"
+                          />
+                        </div>
                       </div>
 
                       <div className="mt-3 flex items-center gap-2 text-xs text-zinc-400">

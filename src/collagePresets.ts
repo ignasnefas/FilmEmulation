@@ -121,11 +121,15 @@ export const defaultCollageSettings: CollageSettings = {
 
 export const collageBackgroundColors = [
   { name: 'White', value: '#FFFFFF' },
-  { name: 'Black', value: '#000000' },
-  { name: 'Gray', value: '#808080' },
-  { name: 'Cream', value: '#FFFDD0' },
-  { name: 'Navy', value: '#0A1628' },
-  { name: 'Beige', value: '#F5F5DC' },
-  { name: 'Light Gray', value: '#F0F0F0' },
-  { name: 'Charcoal', value: '#36454F' },
+  { name: 'Onyx', value: '#111827' },
+  { name: 'Sunflower', value: '#F59E0B' },
+  { name: 'Ocean', value: '#0EA5E9' },
+  { name: 'Emerald', value: '#10B981' },
+  { name: 'Crimson', value: '#EF4444' },
+  { name: 'Royal Purple', value: '#7C3AED' },
+  { name: 'Cotton Candy', value: '#F472B6' },
+  { name: 'Mango', value: '#FDBA74' },
+  { name: 'Teal', value: '#14B8A6' },
+  { name: 'Charcoal', value: '#2D3748' },
+  { name: 'Sandstone', value: '#EAB308' },
 ];
