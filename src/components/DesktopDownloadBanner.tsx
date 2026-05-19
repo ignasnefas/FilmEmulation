@@ -24,7 +24,7 @@ export const DesktopDownloadBanner = () => {
         <p className="text-blue-100 text-sm flex-1">Faster performance and offline support with our native desktop application</p>
         <div className="flex items-center gap-2">
           <a
-            href="https://github.com/yourusername/thefilmlab/releases"
+            href="https://github.com/neetfrog/TheFilmLab/releases"
             target="_blank"
             rel="noopener noreferrer"
             className="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold whitespace-nowrap hover:bg-blue-50 transition-colors text-sm"

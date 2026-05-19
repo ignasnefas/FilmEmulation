@@ -1,0 +1,675 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { collageLayouts, collageBackgroundColors, CollageLayout, CollageSettings, defaultCollageSettings } from './collagePresets';
+
+interface ImageDataEntry {
+  file: File;
+  url: string;
+  width: number;
+  height: number;
+}
+
+interface ImageOffset {
+  x: number;
+  y: number;
+}
+
+interface CollageMarkerToolProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerToolProps) {
+  const [images, setImages] = useState<ImageDataEntry[]>([]);
+  const [selectedLayout, setSelectedLayout] = useState<CollageLayout>(collageLayouts[3]);
+  const [settings, setSettings] = useState<CollageSettings>(defaultCollageSettings);
+  const [processing, setProcessing] = useState(false);
+  const [availableLayouts, setAvailableLayouts] = useState<CollageLayout[]>(collageLayouts);
+  const [imageOffsets, setImageOffsets] = useState<ImageOffset[]>([]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+
+  // Update available layouts based on number of images
+  useEffect(() => {
+    if (images.length === 0) {
+      setAvailableLayouts(collageLayouts);
+      return;
+    }
+    const filtered = collageLayouts.filter((layout) => layout.photoCount <= images.length);
+    setAvailableLayouts(filtered);
+    // If current selection is no longer available, select first available
+    if (!filtered.some((l) => l.id === selectedLayout.id)) {
+      setSelectedLayout(filtered[0] || collageLayouts[0]);
+    }
+  }, [images.length, selectedLayout.id]);
+
+  const addImages = useCallback((files: FileList) => {
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith('image/')) return;
+
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        setImages((prev) => [
+          ...prev,
+          { file, url, width: img.width, height: img.height },
+        ]);
+        setImageOffsets((prev) => [...prev, { x: 0, y: 0 }]);
+      };
+      img.src = url;
+    });
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    addImages(files);
+    if (e.target) e.target.value = '';
+  }, [addImages]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    addImages(files);
+  }, [addImages]);
+
+  const removeImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+    setImageOffsets((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const drawPhotoInCell = (
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    offset: ImageOffset = { x: 0, y: 0 }
+  ) => {
+    if (settings.photoFit === 'cover') {
+      // Cover: crop to fit
+      const imgRatio = img.width / img.height;
+      const cellRatio = width / height;
+      let srcX = 0,
+        srcY = 0,
+        srcWidth = img.width,
+        srcHeight = img.height;
+
+      if (imgRatio > cellRatio) {
+        srcWidth = img.height * cellRatio;
+        srcX = (img.width - srcWidth) / 2 + offset.x;
+      } else {
+        srcHeight = img.width / cellRatio;
+        srcY = (img.height - srcHeight) / 2 + offset.y;
+      }
+      // Clamp source coordinates to image bounds
+      srcX = Math.max(0, Math.min(srcX, img.width - srcWidth));
+      srcY = Math.max(0, Math.min(srcY, img.height - srcHeight));
+      ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, x, y, width, height);
+    } else if (settings.photoFit === 'contain') {
+      // Contain: fit entire image
+      const imgRatio = img.width / img.height;
+      const cellRatio = width / height;
+      let drawWidth = width,
+        drawHeight = height;
+      let drawX = x + offset.x,
+        drawY = y + offset.y;
+
+      if (imgRatio > cellRatio) {
+        drawHeight = drawWidth / imgRatio;
+        drawY = y + (height - drawHeight) / 2 + offset.y;
+      } else {
+        drawWidth = drawHeight * imgRatio;
+        drawX = x + (width - drawWidth) / 2 + offset.x;
+      }
+      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    } else {
+      // Fill: stretch to fit with offset
+      ctx.drawImage(img, x + offset.x, y + offset.y, width, height);
+    }
+  };
+
+  const updatePreview = useCallback(async () => {
+    if (images.length === 0 || !previewCanvasRef.current) return;
+
+    const canvas = previewCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Calculate canvas size based on aspect ratio (4:3 preview)
+    const maxWidth = 400;
+    const maxHeight = 300;
+    canvas.width = maxWidth;
+    canvas.height = maxHeight;
+
+    // Draw background
+    ctx.fillStyle = settings.backgroundColor;
+    ctx.globalAlpha = settings.backgroundOpacity;
+    ctx.fillRect(0, 0, maxWidth, maxHeight);
+    ctx.globalAlpha = 1;
+
+    const gap = settings.gapSize;
+    const paddingPixels = (settings.padding / 100) * Math.min(maxWidth, maxHeight);
+    const availableWidth = maxWidth - paddingPixels * 2;
+    const availableHeight = maxHeight - paddingPixels * 2;
+    const usedImages = images.slice(0, selectedLayout.photoCount);
+
+    if (selectedLayout.template === 'grid') {
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length; i++) {
+        const img = new Image();
+        const row = Math.floor(i / selectedLayout.cols);
+        const col = i % selectedLayout.cols;
+        const x = paddingPixels + col * (cellWidth + gap);
+        const y = paddingPixels + row * (cellHeight + gap);
+
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, imageOffsets[i] || { x: 0, y: 0 });
+            resolve();
+          };
+          img.crossOrigin = 'anonymous';
+          img.src = usedImages[i].url;
+        });
+      }
+    } else if (selectedLayout.positions) {
+      // Custom layout with position mapping
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
+        const pos = selectedLayout.positions[i];
+        const img = new Image();
+        const x = paddingPixels + pos.col * (cellWidth + gap);
+        const y = paddingPixels + pos.row * (cellHeight + gap);
+        const width = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
+        const height = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
+
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            drawPhotoInCell(ctx, img, x, y, width, height, imageOffsets[i] || { x: 0, y: 0 });
+            resolve();
+          };
+          img.crossOrigin = 'anonymous';
+          img.src = usedImages[i].url;
+        });
+      }
+    }
+  }, [images, selectedLayout, settings]);
+
+  useEffect(() => {
+    updatePreview();
+  }, [updatePreview]);
+
+  useEffect(() => {
+    updatePreview();
+  }, [imageOffsets]);
+
+  const getImageIndexAtPoint = (canvasX: number, canvasY: number): number | null => {
+    if (!previewCanvasRef.current) return null;
+
+    const canvas = previewCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = canvasX * scaleX;
+    const y = canvasY * scaleY;
+
+    const gap = settings.gapSize;
+    const paddingPixels = (settings.padding / 100) * Math.min(canvas.width, canvas.height);
+    const availableWidth = canvas.width - paddingPixels * 2;
+    const availableHeight = canvas.height - paddingPixels * 2;
+    const usedImages = images.slice(0, selectedLayout.photoCount);
+
+    if (selectedLayout.template === 'grid') {
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length; i++) {
+        const row = Math.floor(i / selectedLayout.cols);
+        const col = i % selectedLayout.cols;
+        const cellX = paddingPixels + col * (cellWidth + gap);
+        const cellY = paddingPixels + row * (cellHeight + gap);
+
+        if (x >= cellX && x < cellX + cellWidth && y >= cellY && y < cellY + cellHeight) {
+          return i;
+        }
+      }
+    } else if (selectedLayout.positions) {
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
+        const pos = selectedLayout.positions[i];
+        const cellX = paddingPixels + pos.col * (cellWidth + gap);
+        const cellY = paddingPixels + pos.row * (cellHeight + gap);
+        const cellW = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
+        const cellH = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
+
+        if (x >= cellX && x < cellX + cellW && y >= cellY && y < cellY + cellH) {
+          return i;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const imageIndex = getImageIndexAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    if (imageIndex !== null) {
+      draggingImageIndexRef.current = imageIndex;
+      dragStartRef.current = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
+      tempOffsetRef.current = { x: 0, y: 0 };
+    }
+  }, [getImageIndexAtPoint]);
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (draggingImageIndexRef.current === null || dragStartRef.current === null) return;
+
+    const deltaX = e.nativeEvent.offsetX - dragStartRef.current.x;
+    const deltaY = e.nativeEvent.offsetY - dragStartRef.current.y;
+
+    const canvas = previewCanvasRef.current;
+    if (!canvas) return;
+
+    const scaleX = canvas.width / canvas.getBoundingClientRect().width;
+    const scaleY = canvas.height / canvas.getBoundingClientRect().height;
+
+    tempOffsetRef.current = {
+      x: tempOffsetRef.current.x + deltaX * scaleX,
+      y: tempOffsetRef.current.y + deltaY * scaleY,
+    };
+
+    dragStartRef.current = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
+  }, []);
+
+  const handleCanvasMouseUp = useCallback(() => {
+    if (draggingImageIndexRef.current !== null) {
+      const index = draggingImageIndexRef.current;
+      setImageOffsets((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          x: (updated[index]?.x || 0) + tempOffsetRef.current.x,
+          y: (updated[index]?.y || 0) + tempOffsetRef.current.y,
+        };
+        return updated;
+      });
+    }
+    draggingImageIndexRef.current = null;
+    dragStartRef.current = null;
+    tempOffsetRef.current = { x: 0, y: 0 };
+  }, []);
+
+  const handleCanvasMouseLeave = useCallback(() => {
+    draggingImageIndexRef.current = null;
+    dragStartRef.current = null;
+    tempOffsetRef.current = { x: 0, y: 0 };
+  }, []);
+
+  const calculateFinalSize = (baseWidth: number) => {
+    const ratio = baseWidth / 400; // 400 is preview width
+    return {
+      width: Math.round(baseWidth),
+      height: Math.round(300 * ratio),
+    };
+  };
+
+  const handleDownload = useCallback(async (width: number = 1600) => {
+    if (images.length === 0) return;
+
+    setProcessing(true);
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const size = calculateFinalSize(width);
+    canvas.width = size.width;
+    canvas.height = size.height;
+
+    // Draw background
+    ctx.fillStyle = settings.backgroundColor;
+    ctx.globalAlpha = settings.backgroundOpacity;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+
+    const gap = (settings.gapSize / 400) * canvas.width;
+    const paddingPixels = (settings.padding / 100) * Math.min(canvas.width, canvas.height);
+    const availableWidth = canvas.width - paddingPixels * 2;
+    const availableHeight = canvas.height - paddingPixels * 2;
+    const usedImages = images.slice(0, selectedLayout.photoCount);
+
+    if (selectedLayout.template === 'grid') {
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length; i++) {
+        const img = new Image();
+        const row = Math.floor(i / selectedLayout.cols);
+        const col = i % selectedLayout.cols;
+        const x = paddingPixels + col * (cellWidth + gap);
+        const y = paddingPixels + row * (cellHeight + gap);
+
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            // Scale offset to final size
+            const scaleRatio = canvas.width / 400; // 400 is preview width
+            const scaledOffset = {
+              x: (imageOffsets[i]?.x || 0) * scaleRatio,
+              y: (imageOffsets[i]?.y || 0) * scaleRatio,
+            };
+            drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, scaledOffset);
+            resolve();
+          };
+          img.crossOrigin = 'anonymous';
+          img.src = usedImages[i].url;
+        });
+      }
+    } else if (selectedLayout.positions) {
+      const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
+      const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
+
+      for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
+        const pos = selectedLayout.positions[i];
+        const img = new Image();
+        const x = paddingPixels + pos.col * (cellWidth + gap);
+        const y = paddingPixels + pos.row * (cellHeight + gap);
+        const w = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
+        const h = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
+
+        await new Promise<void>((resolve) => {
+          img.onload = () => {
+            // Scale offset to final size
+            const scaleRatio = canvas.width / 400; // 400 is preview width
+            const scaledOffset = {
+              x: (imageOffsets[i]?.x || 0) * scaleRatio,
+              y: (imageOffsets[i]?.y || 0) * scaleRatio,
+            };
+            drawPhotoInCell(ctx, img, x, y, w, h, scaledOffset);
+            resolve();
+          };
+          img.crossOrigin = 'anonymous';
+          img.src = usedImages[i].url;
+        });
+      }
+    }
+
+    const link = document.createElement('a');
+    link.download = `collage_${selectedLayout.id}_${Date.now()}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
+
+    setProcessing(false);
+  }, [images, selectedLayout, settings, imageOffsets]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-zinc-900 rounded-xl max-h-[90vh] w-full max-w-2xl flex flex-col border border-zinc-700/50 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700/50 bg-zinc-800/50">
+          <h2 className="text-xl font-bold text-white">Collage Maker</h2>
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-zinc-200 text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {images.length === 0 ? (
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-amber-500/40 rounded-xl p-12 text-center cursor-pointer hover:border-amber-400/60 hover:bg-amber-500/5 transition-all"
+            >
+              <div className="text-5xl mb-3">🖼️</div>
+              <p className="text-white font-medium mb-1">Drop images here</p>
+              <p className="text-zinc-400 text-sm">or click to browse (add 2+ images)</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+            </div>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white mb-2">Preview</h3>
+                    <p className="text-xs text-zinc-500 mb-2">💡 Drag on images to reposition them</p>
+                    <div className="flex items-center justify-center bg-zinc-950/50 rounded-lg p-4 min-h-64">
+                      <canvas
+                        ref={previewCanvasRef}
+                        className="max-w-full max-h-80 rounded shadow-lg cursor-grab active:cursor-grabbing"
+                        onMouseDown={handleCanvasMouseDown}
+                        onMouseMove={handleCanvasMouseMove}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={handleCanvasMouseLeave}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
+                      <div className="flex items-center justify-between gap-4 mb-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Layout</p>
+                          <h3 className="text-sm font-semibold text-white">{selectedLayout.name}</h3>
+                        </div>
+                        <span className="text-xs text-zinc-400">{images.length} photos</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {availableLayouts.map((layout) => (
+                          <button
+                            key={layout.id}
+                            onClick={() => setSelectedLayout(layout)}
+                            title={layout.description}
+                            className={`rounded-full px-3 py-2 text-[12px] font-medium transition ${
+                              selectedLayout.id === layout.id
+                                ? 'bg-amber-500 text-black shadow-sm'
+                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {layout.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
+                      <div className="flex items-center justify-between gap-4 mb-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Background</p>
+                          <h3 className="text-sm font-semibold text-white">Color</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, backgroundColor: '#FFFFFF' })}
+                          className="text-xs text-zinc-400 hover:text-white"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {collageBackgroundColors.map((color) => (
+                          <button
+                            key={color.value}
+                            onClick={() => setSettings({ ...settings, backgroundColor: color.value })}
+                            className={`h-10 w-10 rounded-full border-2 transition ${
+                              settings.backgroundColor === color.value
+                                ? 'border-amber-500 shadow-inner'
+                                : 'border-zinc-700/50 hover:border-zinc-500'
+                            }`}
+                            style={{ backgroundColor: color.value }}
+                          />
+                        ))}
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Gap</p>
+                            <h3 className="text-sm font-semibold text-white">{settings.gapSize}px</h3>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="20"
+                            step="1"
+                            value={settings.gapSize}
+                            onChange={(e) =>
+                              setSettings({ ...settings, gapSize: parseInt(e.target.value, 10) })
+                            }
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Padding</p>
+                            <h3 className="text-sm font-semibold text-white">{settings.padding}%</h3>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="20"
+                            step="1"
+                            value={settings.padding}
+                            onChange={(e) =>
+                              setSettings({ ...settings, padding: parseInt(e.target.value, 10) })
+                            }
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Opacity</p>
+                            <h3 className="text-sm font-semibold text-white">
+                              {Math.round(settings.backgroundOpacity * 100)}%
+                            </h3>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={settings.backgroundOpacity * 100}
+                            onChange={(e) =>
+                              setSettings({ ...settings, backgroundOpacity: parseInt(e.target.value, 10) / 100 })
+                            }
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Photo Fit</p>
+                          </div>
+                          <select
+                            value={settings.photoFit}
+                            onChange={(e) =>
+                              setSettings({ ...settings, photoFit: e.target.value as 'cover' | 'contain' | 'fill' })
+                            }
+                            className="px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 hover:border-zinc-600"
+                          >
+                            <option value="cover">Cover (crop)</option>
+                            <option value="contain">Contain (fit)</option>
+                            <option value="fill">Fill (stretch)</option>
+                          </select>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setImageOffsets(images.map(() => ({ x: 0, y: 0 })))}
+                            className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition text-sm"
+                          >
+                            Reset positions
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4 mt-4 space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(1600)}
+                          disabled={processing}
+                          className="w-full px-4 py-3 rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 transition-all disabled:opacity-50"
+                        >
+                          {processing ? 'Rendering…' : 'Download collage (1600px)'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(3200)}
+                          disabled={processing}
+                          className="w-full px-4 py-3 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-all disabled:opacity-50"
+                        >
+                          Download HQ (3200px)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
+                    <h3 className="text-sm font-semibold text-white mb-3">Images ({images.length})</h3>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {images.map((image, index) => (
+                        <div
+                          key={image.url}
+                          className="flex items-center gap-2 rounded-lg bg-zinc-800/50 p-2"
+                        >
+                          <img
+                            src={image.url}
+                            alt={`Photo ${index + 1}`}
+                            className="w-12 h-12 rounded object-cover"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white truncate">{image.file.name}</p>
+                            <p className="text-xs text-zinc-400">{index + 1}</p>
+                          </div>
+                          <button
+                            onClick={() => removeImage(index)}
+                            className="px-2 py-1 rounded-lg text-xs text-zinc-400 hover:text-red-400 hover:bg-red-950/20 transition"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full mt-3 px-3 py-2 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition text-sm"
+                    >
+                      Add more images
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

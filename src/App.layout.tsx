@@ -60,6 +60,7 @@ import {
 } from './App.helpers';
 import FramingTool from './FramingTool';
 import NegativeConverterTool from './NegativeConverterTool';
+import CollageMarkerTool from './CollageMarkerTool';
 
 export default function AppLayout() {
   const state = useFilmLabState();
@@ -81,6 +82,7 @@ export default function AppLayout() {
   const [isTouchPinching, setIsTouchPinching] = useState(false);
   const [framingToolOpen, setFramingToolOpen] = useState(false);
   const [negativeConverterToolOpen, setNegativeConverterToolOpen] = useState(false);
+  const [collageToolOpen, setCollageToolOpen] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(310);
   const startYRef = useRef(0);
@@ -432,6 +434,15 @@ export default function AppLayout() {
             >
               📽️
               <span className="hidden md:inline ml-1">Negative</span>
+            </button>
+            <button
+              onClick={() => setCollageToolOpen(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all border flex-shrink-0 bg-zinc-800/80 text-zinc-500 hover:text-zinc-300 border-zinc-700/50"
+              title="Open collage maker"
+              aria-label="Open collage maker"
+            >
+              🎨
+              <span className="hidden md:inline ml-1">Collage</span>
             </button>
             <button
               onClick={() => setIsAboutOpen(true)}
@@ -1173,7 +1184,10 @@ export default function AppLayout() {
         <NegativeConverterTool 
           isOpen={negativeConverterToolOpen} 
           onClose={() => setNegativeConverterToolOpen(false)}
-          onFileSelected={handleNegativeFileSelected}
+        />
+        <CollageMarkerTool 
+          isOpen={collageToolOpen} 
+          onClose={() => setCollageToolOpen(false)}
         />
 
         {sidebarOpen && (
