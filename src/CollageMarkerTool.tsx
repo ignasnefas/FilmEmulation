@@ -1,6 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { collageLayouts, collageBackgroundColors, CollageLayout, CollageSettings, defaultCollageSettings } from './collagePresets';
 
+const collageAspectRatios = [
+  { id: '16:9', label: '16:9', width: 16, height: 9 },
+  { id: '9:16', label: '9:16', width: 9, height: 16 },
+  { id: '4:3', label: '4:3', width: 4, height: 3 },
+  { id: '1:1', label: '1:1', width: 1, height: 1 },
+  { id: '6:7', label: '6:7', width: 6, height: 7 },
+] as const;
+
+type CollageAspectRatio = (typeof collageAspectRatios)[number];
+
 interface ImageDataEntry {
   file: File;
   url: string;
@@ -25,8 +35,10 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   const [processing, setProcessing] = useState(false);
   const [availableLayouts, setAvailableLayouts] = useState<CollageLayout[]>(collageLayouts);
   const [imageOffsets, setImageOffsets] = useState<ImageOffset[]>([]);
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<CollageAspectRatio>(collageAspectRatios[2]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const customColorInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
   const renderIdRef = useRef(0);
@@ -148,16 +160,23 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Calculate canvas size based on aspect ratio (4:3 preview)
     const maxWidth = 400;
     const maxHeight = 300;
-    canvas.width = maxWidth;
-    canvas.height = maxHeight;
+    const previewRatio = selectedAspectRatio.width / selectedAspectRatio.height;
+    let previewWidth = maxWidth;
+    let previewHeight = Math.round(previewWidth / previewRatio);
+    if (previewHeight > maxHeight) {
+      previewHeight = maxHeight;
+      previewWidth = Math.round(previewHeight * previewRatio);
+    }
+
+    canvas.width = previewWidth;
+    canvas.height = previewHeight;
 
     const gap = settings.gapSize;
-    const paddingPixels = (settings.padding / 100) * Math.min(maxWidth, maxHeight);
-    const availableWidth = maxWidth - paddingPixels * 2;
-    const availableHeight = maxHeight - paddingPixels * 2;
+    const paddingPixels = (settings.padding / 100) * Math.min(previewWidth, previewHeight);
+    const availableWidth = previewWidth - paddingPixels * 2;
+    const availableHeight = previewHeight - paddingPixels * 2;
     const usedImages = images.slice(0, selectedLayout.photoCount);
 
     const loadedImages = await Promise.all(
@@ -169,7 +188,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     // Draw background
     ctx.fillStyle = settings.backgroundColor;
     ctx.globalAlpha = settings.backgroundOpacity;
-    ctx.fillRect(0, 0, maxWidth, maxHeight);
+    ctx.fillRect(0, 0, previewWidth, previewHeight);
     ctx.globalAlpha = 1;
 
     if (selectedLayout.template === 'grid') {
@@ -200,7 +219,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
         drawPhotoInCell(ctx, img, x, y, width, height, getEffectiveOffset(i));
       }
     }
-  }, [images, selectedLayout, settings, imageOffsets, loadImage]);
+  }, [images, selectedLayout, selectedAspectRatio, settings, imageOffsets, loadImage]);
 
   useEffect(() => {
     updatePreview();
@@ -323,10 +342,9 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   }, []);
 
   const calculateFinalSize = (baseWidth: number) => {
-    const ratio = baseWidth / 400; // 400 is preview width
     return {
       width: Math.round(baseWidth),
-      height: Math.round(300 * ratio),
+      height: Math.round(baseWidth * selectedAspectRatio.height / selectedAspectRatio.width),
     };
   };
 
@@ -347,7 +365,8 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 1;
 
-    const gap = (settings.gapSize / 400) * canvas.width;
+    const previewCanvasWidth = previewCanvasRef.current?.width || 400;
+    const gap = (settings.gapSize / previewCanvasWidth) * canvas.width;
     const paddingPixels = (settings.padding / 100) * Math.min(canvas.width, canvas.height);
     const availableWidth = canvas.width - paddingPixels * 2;
     const availableHeight = canvas.height - paddingPixels * 2;
@@ -363,7 +382,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
         const col = i % selectedLayout.cols;
         const x = paddingPixels + col * (cellWidth + gap);
         const y = paddingPixels + row * (cellHeight + gap);
-        const scaleRatio = canvas.width / 400; // 400 is preview width
+        const scaleRatio = canvas.width / previewCanvasWidth;
         const scaledOffset = {
           x: (imageOffsets[i]?.x || 0) * scaleRatio,
           y: (imageOffsets[i]?.y || 0) * scaleRatio,
@@ -381,7 +400,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
         const y = paddingPixels + pos.row * (cellHeight + gap);
         const w = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
         const h = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
-        const scaleRatio = canvas.width / 400; // 400 is preview width
+        const scaleRatio = canvas.width / previewCanvasWidth;
         const scaledOffset = {
           x: (imageOffsets[i]?.x || 0) * scaleRatio,
           y: (imageOffsets[i]?.y || 0) * scaleRatio,
@@ -396,7 +415,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     link.click();
 
     setProcessing(false);
-  }, [images, selectedLayout, settings, imageOffsets, loadImage]);
+  }, [images, selectedLayout, settings, imageOffsets, loadImage, selectedAspectRatio]);
 
   if (!isOpen) return null;
 
@@ -478,6 +497,33 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           </button>
                         ))}
                       </div>
+
+                      <div className="mt-4 rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Export ratio</p>
+                            <h3 className="text-sm font-semibold text-white">{selectedAspectRatio.label}</h3>
+                          </div>
+                          <span className="text-xs text-zinc-400">Shape preview</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {collageAspectRatios.map((ratio) => (
+                            <button
+                              key={ratio.id}
+                              type="button"
+                              onClick={() => setSelectedAspectRatio(ratio)}
+                              className={`rounded-full px-3 py-2 text-[12px] font-medium transition ${
+                                selectedAspectRatio.id === ratio.id
+                                  ? 'bg-amber-500 text-black shadow-sm'
+                                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                              }`}
+                            >
+                              {ratio.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                     </div>
 
                     <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
@@ -498,6 +544,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                         {collageBackgroundColors.map((color) => (
                           <button
                             key={color.value}
+                            type="button"
                             onClick={() => setSettings({ ...settings, backgroundColor: color.value })}
                             className={`h-10 w-10 rounded-full border-2 transition ${
                               settings.backgroundColor === color.value
@@ -508,24 +555,28 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                             aria-label={`Set background color to ${color.name}`}
                           />
                         ))}
-                        <label className="relative h-10 w-10 rounded-full border-2 overflow-hidden transition border-zinc-700/50 hover:border-zinc-500 cursor-pointer" style={{ backgroundColor: settings.backgroundColor }}>
-                          <input
-                            type="color"
-                            value={settings.backgroundColor}
-                            onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
-                            className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
-                            aria-label="Choose a custom background color"
-                          />
-                          <span className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.2em] text-zinc-100 bg-black/20">Custom</span>
-                        </label>
+                        <button
+                          type="button"
+                          onClick={() => customColorInputRef.current?.click()}
+                          className="h-10 w-10 rounded-full border-2 border-zinc-700/50 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500 transition flex items-center justify-center"
+                          aria-label="Open custom color picker"
+                        >
+                          +
+                        </button>
+                        <input
+                          ref={customColorInputRef}
+                          type="color"
+                          value={settings.backgroundColor}
+                          onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
+                          className="hidden"
+                          aria-hidden="true"
+                        />
                       </div>
 
-                      <div className="mt-3">
-                        <div className="flex items-center gap-2 text-xs text-zinc-400">
-                          <span>Current</span>
-                          <span className="h-5 w-5 rounded-full border border-zinc-700" style={{ backgroundColor: settings.backgroundColor }} />
-                          <span>{settings.backgroundColor.toUpperCase()}</span>
-                        </div>
+                      <div className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+                        <span className="uppercase tracking-[0.2em]">Selected</span>
+                        <span className="h-5 w-5 rounded-full border border-zinc-700" style={{ backgroundColor: settings.backgroundColor }} />
+                        <span className="font-mono text-zinc-200">{settings.backgroundColor.toUpperCase()}</span>
                       </div>
 
                       <div className="mt-4 space-y-3">
