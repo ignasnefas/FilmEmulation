@@ -29,6 +29,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
+  const renderIdRef = useRef(0);
   const cachedImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Update available layouts based on number of images
@@ -142,6 +143,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   const updatePreview = useCallback(async () => {
     if (images.length === 0 || !previewCanvasRef.current) return;
 
+    const renderId = ++renderIdRef.current;
     const canvas = previewCanvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -152,24 +154,31 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     canvas.width = maxWidth;
     canvas.height = maxHeight;
 
-    // Draw background
-    ctx.fillStyle = settings.backgroundColor;
-    ctx.globalAlpha = settings.backgroundOpacity;
-    ctx.fillRect(0, 0, maxWidth, maxHeight);
-    ctx.globalAlpha = 1;
-
     const gap = settings.gapSize;
     const paddingPixels = (settings.padding / 100) * Math.min(maxWidth, maxHeight);
     const availableWidth = maxWidth - paddingPixels * 2;
     const availableHeight = maxHeight - paddingPixels * 2;
     const usedImages = images.slice(0, selectedLayout.photoCount);
 
+    const loadedImages = await Promise.all(
+      usedImages.map((image) => loadImage(image.url))
+    );
+
+    if (renderId !== renderIdRef.current) return;
+
+    // Draw background
+    ctx.fillStyle = settings.backgroundColor;
+    ctx.globalAlpha = settings.backgroundOpacity;
+    ctx.fillRect(0, 0, maxWidth, maxHeight);
+    ctx.globalAlpha = 1;
+
     if (selectedLayout.template === 'grid') {
       const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
       const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
 
-      for (let i = 0; i < usedImages.length; i++) {
-        const img = await loadImage(usedImages[i].url);
+      for (let i = 0; i < loadedImages.length; i++) {
+        if (renderId !== renderIdRef.current) return;
+        const img = loadedImages[i];
         const row = Math.floor(i / selectedLayout.cols);
         const col = i % selectedLayout.cols;
         const x = paddingPixels + col * (cellWidth + gap);
@@ -177,13 +186,13 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
         drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, getEffectiveOffset(i));
       }
     } else if (selectedLayout.positions) {
-      // Custom layout with position mapping
       const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
       const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
 
-      for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
+      for (let i = 0; i < loadedImages.length && i < selectedLayout.positions.length; i++) {
+        if (renderId !== renderIdRef.current) return;
         const pos = selectedLayout.positions[i];
-        const img = await loadImage(usedImages[i].url);
+        const img = loadedImages[i];
         const x = paddingPixels + pos.col * (cellWidth + gap);
         const y = paddingPixels + pos.row * (cellHeight + gap);
         const width = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
@@ -191,7 +200,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
         drawPhotoInCell(ctx, img, x, y, width, height, getEffectiveOffset(i));
       }
     }
-  }, [images, selectedLayout, settings, loadImage]);
+  }, [images, selectedLayout, settings, imageOffsets, loadImage]);
 
   useEffect(() => {
     updatePreview();
