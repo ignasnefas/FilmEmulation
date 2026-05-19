@@ -47,8 +47,10 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imageListRef = useRef<HTMLDivElement>(null);
   const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
   const dragImageIndexRef = useRef<number | null>(null);
+  const listDragDataRef = useRef<{ startIndex: number; currentIndex: number; pointerId: number } | null>(null);
   const renderIdRef = useRef(0);
   const cachedImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
@@ -147,6 +149,41 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     if (fromIndex === null || fromIndex === index) return;
     swapImages(fromIndex, index);
     dragImageIndexRef.current = null;
+    setDragOverImageIndex(null);
+  }, [swapImages]);
+
+  const handleImageRowPointerDown = useCallback((index: number) => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'touch') return;
+    listDragDataRef.current = {
+      startIndex: index,
+      currentIndex: index,
+      pointerId: e.pointerId,
+    };
+    setDragOverImageIndex(index);
+  }, []);
+
+  const handleImageListPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!listDragDataRef.current) return;
+    const element = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const row = element?.closest('[data-image-index]') as HTMLElement | null;
+    if (!row || !imageListRef.current?.contains(row)) {
+      setDragOverImageIndex(null);
+      return;
+    }
+    const nextIndex = Number(row.dataset.imageIndex);
+    if (Number.isFinite(nextIndex)) {
+      listDragDataRef.current.currentIndex = nextIndex;
+      setDragOverImageIndex(nextIndex);
+    }
+  }, []);
+
+  const handleImageListPointerUp = useCallback(() => {
+    if (!listDragDataRef.current) return;
+    const { startIndex, currentIndex } = listDragDataRef.current;
+    if (currentIndex !== startIndex) {
+      swapImages(startIndex, currentIndex);
+    }
+    listDragDataRef.current = null;
     setDragOverImageIndex(null);
   }, [swapImages]);
 
@@ -710,11 +747,21 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                         <p className="text-xs text-zinc-500">Drag images to reorder collage positions.</p>
                       </div>
                     </div>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div
+                      ref={imageListRef}
+                      className="space-y-2 max-h-96 overflow-y-auto"
+                      style={{ touchAction: 'none' }}
+                      onPointerMove={handleImageListPointerMove}
+                      onPointerUp={handleImageListPointerUp}
+                      onPointerCancel={handleImageListPointerUp}
+                    >
                       {images.map((image, index) => (
                         <div
                           key={image.url}
                           draggable
+                          data-image-index={index}
+                          onPointerDown={handleImageRowPointerDown(index)}
+                          style={{ touchAction: 'none' }}
                           onDragStart={handleImageDragStart(index)}
                           onDragEnd={handleImageDragEnd}
                           onDragOver={handleImageDragOver}
