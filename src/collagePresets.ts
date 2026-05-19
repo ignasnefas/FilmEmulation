@@ -121,6 +121,7 @@ export const defaultCollageSettings: CollageSettings = {
 
 export const collageBackgroundColors = [
   { name: 'White', value: '#FFFFFF' },
+  { name: 'Black', value: '#000000' },
   { name: 'Onyx', value: '#111827' },
   { name: 'Sunflower', value: '#F59E0B' },
   { name: 'Ocean', value: '#0EA5E9' },
