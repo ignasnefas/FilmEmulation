@@ -687,7 +687,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           disabled={processing}
                           className="w-full px-4 py-3 rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 transition-all disabled:opacity-50"
                         >
-                          {processing ? 'Rendering…' : 'Download collage (1600px)'}
+                          {processing ? 'Rendering…' : 'Download Small (1600px)'}
                         </button>
                         <button
                           type="button"
@@ -695,7 +695,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           disabled={processing}
                           className="w-full px-4 py-3 rounded-lg bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-all disabled:opacity-50"
                         >
-                          Download HQ (3200px)
+                          Download Big (3200px)
                         </button>
                       </div>
                     </div>
