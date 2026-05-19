@@ -108,7 +108,7 @@ export interface CollageSettings {
   padding: number; // 0-20% padding around edges
   backgroundColor: string;
   backgroundOpacity: number; // 0-1
-  photoFit: 'cover' | 'contain' | 'fill'; // how to fit photos in cells
+  photoFit: 'cover'; // only cover mode is supported
 }
 
 export const defaultCollageSettings: CollageSettings = {

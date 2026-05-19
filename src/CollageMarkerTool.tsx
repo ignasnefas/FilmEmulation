@@ -28,7 +28,8 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-  const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
+  const cachedImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
   // Update available layouts based on number of images
   useEffect(() => {
@@ -68,6 +69,24 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     if (e.target) e.target.value = '';
   }, [addImages]);
 
+  const loadImage = useCallback((url: string) => {
+    const cached = cachedImagesRef.current.get(url);
+    if (cached && cached.complete && cached.naturalWidth) {
+      return Promise.resolve(cached);
+    }
+
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = cached || new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        cachedImagesRef.current.set(url, img);
+        resolve(img);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }, []);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const files = e.dataTransfer.files;
@@ -88,47 +107,36 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     height: number,
     offset: ImageOffset = { x: 0, y: 0 }
   ) => {
-    if (settings.photoFit === 'cover') {
-      // Cover: crop to fit
-      const imgRatio = img.width / img.height;
-      const cellRatio = width / height;
-      let srcX = 0,
-        srcY = 0,
-        srcWidth = img.width,
-        srcHeight = img.height;
+    // Cover: crop to fit only
+    const imgRatio = img.width / img.height;
+    const cellRatio = width / height;
+    let srcX = 0,
+      srcY = 0,
+      srcWidth = img.width,
+      srcHeight = img.height;
 
-      if (imgRatio > cellRatio) {
-        srcWidth = img.height * cellRatio;
-        srcX = (img.width - srcWidth) / 2 + offset.x;
-      } else {
-        srcHeight = img.width / cellRatio;
-        srcY = (img.height - srcHeight) / 2 + offset.y;
-      }
-      // Clamp source coordinates to image bounds
-      srcX = Math.max(0, Math.min(srcX, img.width - srcWidth));
-      srcY = Math.max(0, Math.min(srcY, img.height - srcHeight));
-      ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, x, y, width, height);
-    } else if (settings.photoFit === 'contain') {
-      // Contain: fit entire image
-      const imgRatio = img.width / img.height;
-      const cellRatio = width / height;
-      let drawWidth = width,
-        drawHeight = height;
-      let drawX = x + offset.x,
-        drawY = y + offset.y;
-
-      if (imgRatio > cellRatio) {
-        drawHeight = drawWidth / imgRatio;
-        drawY = y + (height - drawHeight) / 2 + offset.y;
-      } else {
-        drawWidth = drawHeight * imgRatio;
-        drawX = x + (width - drawWidth) / 2 + offset.x;
-      }
-      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    if (imgRatio > cellRatio) {
+      srcWidth = img.height * cellRatio;
+      srcX = (img.width - srcWidth) / 2 + offset.x;
     } else {
-      // Fill: stretch to fit with offset
-      ctx.drawImage(img, x + offset.x, y + offset.y, width, height);
+      srcHeight = img.width / cellRatio;
+      srcY = (img.height - srcHeight) / 2 + offset.y;
     }
+
+    // Clamp source coordinates to image bounds
+    srcX = Math.max(0, Math.min(srcX, img.width - srcWidth));
+    srcY = Math.max(0, Math.min(srcY, img.height - srcHeight));
+    ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, x, y, width, height);
+  };
+
+  const getEffectiveOffset = (imageIndex: number): ImageOffset => {
+    if (dragDataRef.current && dragDataRef.current.imageIndex === imageIndex) {
+      return {
+        x: dragDataRef.current.currentOffsetX,
+        y: dragDataRef.current.currentOffsetY,
+      };
+    }
+    return imageOffsets[imageIndex] || { x: 0, y: 0 };
   };
 
   const updatePreview = useCallback(async () => {
@@ -161,20 +169,12 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
       const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
 
       for (let i = 0; i < usedImages.length; i++) {
-        const img = new Image();
+        const img = await loadImage(usedImages[i].url);
         const row = Math.floor(i / selectedLayout.cols);
         const col = i % selectedLayout.cols;
         const x = paddingPixels + col * (cellWidth + gap);
         const y = paddingPixels + row * (cellHeight + gap);
-
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, imageOffsets[i] || { x: 0, y: 0 });
-            resolve();
-          };
-          img.crossOrigin = 'anonymous';
-          img.src = usedImages[i].url;
-        });
+        drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, getEffectiveOffset(i));
       }
     } else if (selectedLayout.positions) {
       // Custom layout with position mapping
@@ -183,23 +183,15 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
       for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
         const pos = selectedLayout.positions[i];
-        const img = new Image();
+        const img = await loadImage(usedImages[i].url);
         const x = paddingPixels + pos.col * (cellWidth + gap);
         const y = paddingPixels + pos.row * (cellHeight + gap);
         const width = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
         const height = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
-
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            drawPhotoInCell(ctx, img, x, y, width, height, imageOffsets[i] || { x: 0, y: 0 });
-            resolve();
-          };
-          img.crossOrigin = 'anonymous';
-          img.src = usedImages[i].url;
-        });
+        drawPhotoInCell(ctx, img, x, y, width, height, getEffectiveOffset(i));
       }
     }
-  }, [images, selectedLayout, settings]);
+  }, [images, selectedLayout, settings, loadImage]);
 
   useEffect(() => {
     updatePreview();
@@ -207,7 +199,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
   useEffect(() => {
     updatePreview();
-  }, [imageOffsets]);
+  }, [imageOffsets, updatePreview]);
 
   const getImageIndexAtPoint = (canvasX: number, canvasY: number): number | null => {
     if (!previewCanvasRef.current) return null;
@@ -259,56 +251,65 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     return null;
   };
 
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const imageIndex = getImageIndexAtPoint(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
     if (imageIndex !== null) {
-      draggingImageIndexRef.current = imageIndex;
-      dragStartRef.current = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
-      tempOffsetRef.current = { x: 0, y: 0 };
+      const canvas = previewCanvasRef.current;
+      if (canvas) {
+        canvas.setPointerCapture(e.pointerId);
+      }
+      dragDataRef.current = {
+        imageIndex,
+        startX: e.nativeEvent.offsetX,
+        startY: e.nativeEvent.offsetY,
+        startOffsetX: imageOffsets[imageIndex]?.x || 0,
+        startOffsetY: imageOffsets[imageIndex]?.y || 0,
+        currentOffsetX: imageOffsets[imageIndex]?.x || 0,
+        currentOffsetY: imageOffsets[imageIndex]?.y || 0,
+      };
     }
-  }, [getImageIndexAtPoint]);
+  }, [getImageIndexAtPoint, imageOffsets]);
 
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (draggingImageIndexRef.current === null || dragStartRef.current === null) return;
+  const handleCanvasPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!dragDataRef.current) return;
 
-    const deltaX = e.nativeEvent.offsetX - dragStartRef.current.x;
-    const deltaY = e.nativeEvent.offsetY - dragStartRef.current.y;
+      const deltaX = e.nativeEvent.offsetX - dragDataRef.current.startX;
+      const deltaY = e.nativeEvent.offsetY - dragDataRef.current.startY;
 
-    const canvas = previewCanvasRef.current;
-    if (!canvas) return;
+      const canvas = previewCanvasRef.current;
+      if (!canvas) return;
 
-    const scaleX = canvas.width / canvas.getBoundingClientRect().width;
-    const scaleY = canvas.height / canvas.getBoundingClientRect().height;
+      const scaleX = canvas.width / canvas.getBoundingClientRect().width;
+      const scaleY = canvas.height / canvas.getBoundingClientRect().height;
 
-    tempOffsetRef.current = {
-      x: tempOffsetRef.current.x + deltaX * scaleX,
-      y: tempOffsetRef.current.y + deltaY * scaleY,
-    };
+      dragDataRef.current.currentOffsetX = dragDataRef.current.startOffsetX + deltaX * scaleX;
+      dragDataRef.current.currentOffsetY = dragDataRef.current.startOffsetY + deltaY * scaleY;
 
-    dragStartRef.current = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
-  }, []);
+      requestAnimationFrame(updatePreview);
+    },
+    [updatePreview]
+  );
 
-  const handleCanvasMouseUp = useCallback(() => {
-    if (draggingImageIndexRef.current !== null) {
-      const index = draggingImageIndexRef.current;
+  const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dragDataRef.current) {
+      const imageIndex = dragDataRef.current.imageIndex;
+      const finalX = dragDataRef.current.currentOffsetX;
+      const finalY = dragDataRef.current.currentOffsetY;
+
       setImageOffsets((prev) => {
         const updated = [...prev];
-        updated[index] = {
-          x: (updated[index]?.x || 0) + tempOffsetRef.current.x,
-          y: (updated[index]?.y || 0) + tempOffsetRef.current.y,
-        };
+        updated[imageIndex] = { x: finalX, y: finalY };
         return updated;
       });
     }
-    draggingImageIndexRef.current = null;
-    dragStartRef.current = null;
-    tempOffsetRef.current = { x: 0, y: 0 };
-  }, []);
 
-  const handleCanvasMouseLeave = useCallback(() => {
-    draggingImageIndexRef.current = null;
-    dragStartRef.current = null;
-    tempOffsetRef.current = { x: 0, y: 0 };
+    const canvas = previewCanvasRef.current;
+    if (canvas && canvas.hasPointerCapture(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
+
+    dragDataRef.current = null;
   }, []);
 
   const calculateFinalSize = (baseWidth: number) => {
@@ -347,26 +348,17 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
       const cellHeight = (availableHeight - gap * (selectedLayout.rows - 1)) / selectedLayout.rows;
 
       for (let i = 0; i < usedImages.length; i++) {
-        const img = new Image();
+        const img = await loadImage(usedImages[i].url);
         const row = Math.floor(i / selectedLayout.cols);
         const col = i % selectedLayout.cols;
         const x = paddingPixels + col * (cellWidth + gap);
         const y = paddingPixels + row * (cellHeight + gap);
-
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            // Scale offset to final size
-            const scaleRatio = canvas.width / 400; // 400 is preview width
-            const scaledOffset = {
-              x: (imageOffsets[i]?.x || 0) * scaleRatio,
-              y: (imageOffsets[i]?.y || 0) * scaleRatio,
-            };
-            drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, scaledOffset);
-            resolve();
-          };
-          img.crossOrigin = 'anonymous';
-          img.src = usedImages[i].url;
-        });
+        const scaleRatio = canvas.width / 400; // 400 is preview width
+        const scaledOffset = {
+          x: (imageOffsets[i]?.x || 0) * scaleRatio,
+          y: (imageOffsets[i]?.y || 0) * scaleRatio,
+        };
+        drawPhotoInCell(ctx, img, x, y, cellWidth, cellHeight, scaledOffset);
       }
     } else if (selectedLayout.positions) {
       const cellWidth = (availableWidth - gap * (selectedLayout.cols - 1)) / selectedLayout.cols;
@@ -374,26 +366,17 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
       for (let i = 0; i < usedImages.length && i < selectedLayout.positions.length; i++) {
         const pos = selectedLayout.positions[i];
-        const img = new Image();
+        const img = await loadImage(usedImages[i].url);
         const x = paddingPixels + pos.col * (cellWidth + gap);
         const y = paddingPixels + pos.row * (cellHeight + gap);
         const w = (pos.colSpan || 1) * cellWidth + (pos.colSpan ? (pos.colSpan - 1) * gap : 0);
         const h = (pos.rowSpan || 1) * cellHeight + (pos.rowSpan ? (pos.rowSpan - 1) * gap : 0);
-
-        await new Promise<void>((resolve) => {
-          img.onload = () => {
-            // Scale offset to final size
-            const scaleRatio = canvas.width / 400; // 400 is preview width
-            const scaledOffset = {
-              x: (imageOffsets[i]?.x || 0) * scaleRatio,
-              y: (imageOffsets[i]?.y || 0) * scaleRatio,
-            };
-            drawPhotoInCell(ctx, img, x, y, w, h, scaledOffset);
-            resolve();
-          };
-          img.crossOrigin = 'anonymous';
-          img.src = usedImages[i].url;
-        });
+        const scaleRatio = canvas.width / 400; // 400 is preview width
+        const scaledOffset = {
+          x: (imageOffsets[i]?.x || 0) * scaleRatio,
+          y: (imageOffsets[i]?.y || 0) * scaleRatio,
+        };
+        drawPhotoInCell(ctx, img, x, y, w, h, scaledOffset);
       }
     }
 
@@ -403,7 +386,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     link.click();
 
     setProcessing(false);
-  }, [images, selectedLayout, settings, imageOffsets]);
+  }, [images, selectedLayout, settings, imageOffsets, loadImage]);
 
   if (!isOpen) return null;
 
@@ -451,10 +434,9 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                       <canvas
                         ref={previewCanvasRef}
                         className="max-w-full max-h-80 rounded shadow-lg cursor-grab active:cursor-grabbing"
-                        onMouseDown={handleCanvasMouseDown}
-                        onMouseMove={handleCanvasMouseMove}
-                        onMouseUp={handleCanvasMouseUp}
-                        onMouseLeave={handleCanvasMouseLeave}
+                        onPointerDown={handleCanvasPointerDown}
+                        onPointerMove={handleCanvasPointerMove}
+                        onPointerUp={handleCanvasPointerUp}
                       />
                     </div>
                   </div>
@@ -572,24 +554,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           />
                         </div>
 
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Photo Fit</p>
-                          </div>
-                          <select
-                            value={settings.photoFit}
-                            onChange={(e) =>
-                              setSettings({ ...settings, photoFit: e.target.value as 'cover' | 'contain' | 'fill' })
-                            }
-                            className="px-3 py-1.5 rounded-lg bg-zinc-800 text-white text-sm border border-zinc-700 hover:border-zinc-600"
-                          >
-                            <option value="cover">Cover (crop)</option>
-                            <option value="contain">Contain (fit)</option>
-                            <option value="fill">Fill (stretch)</option>
-                          </select>
-                        </div>
-
-                        <div className="flex gap-2">
+                            <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => setImageOffsets(images.map(() => ({ x: 0, y: 0 })))}
