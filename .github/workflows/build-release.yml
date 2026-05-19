@@ -76,7 +76,7 @@ jobs:
 
             ---
 
-            **Web Version**: Available at [thefilmlab.com](https://thefilmlab.com) or via GitHub Pages
+            **Web Version**: Available at [thefilmlab.vercel.app](http://thefilmlab.vercel.app/) or via GitHub Pages
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
