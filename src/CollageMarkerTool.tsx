@@ -494,7 +494,7 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           Reset
                         </button>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 items-center">
                         {collageBackgroundColors.map((color) => (
                           <button
                             key={color.value}
@@ -505,8 +505,27 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                                 : 'border-zinc-700/50 hover:border-zinc-500'
                             }`}
                             style={{ backgroundColor: color.value }}
+                            aria-label={`Set background color to ${color.name}`}
                           />
                         ))}
+                        <label className="relative h-10 w-10 rounded-full border-2 overflow-hidden transition border-zinc-700/50 hover:border-zinc-500 cursor-pointer" style={{ backgroundColor: settings.backgroundColor }}>
+                          <input
+                            type="color"
+                            value={settings.backgroundColor}
+                            onChange={(e) => setSettings({ ...settings, backgroundColor: e.target.value })}
+                            className="absolute inset-0 h-full w-full opacity-0 cursor-pointer"
+                            aria-label="Choose a custom background color"
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] uppercase tracking-[0.2em] text-zinc-100 bg-black/20">Custom</span>
+                        </label>
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="flex items-center gap-2 text-xs text-zinc-400">
+                          <span>Current</span>
+                          <span className="h-5 w-5 rounded-full border border-zinc-700" style={{ backgroundColor: settings.backgroundColor }} />
+                          <span>{settings.backgroundColor.toUpperCase()}</span>
+                        </div>
                       </div>
 
                       <div className="mt-4 space-y-3">
