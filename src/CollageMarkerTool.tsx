@@ -28,6 +28,13 @@ interface CollageMarkerToolProps {
   onClose: () => void;
 }
 
+const moveArrayItem = <T,>(array: T[], fromIndex: number, toIndex: number): T[] => {
+  const next = [...array];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
+};
+
 export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerToolProps) {
   const [images, setImages] = useState<ImageDataEntry[]>([]);
   const [selectedLayout, setSelectedLayout] = useState<CollageLayout>(collageLayouts[3]);
@@ -36,11 +43,13 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
   const [availableLayouts, setAvailableLayouts] = useState<CollageLayout[]>(collageLayouts);
   const [imageOffsets, setImageOffsets] = useState<ImageOffset[]>([]);
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<CollageAspectRatio>(collageAspectRatios[2]);
+  const [dragOverImageIndex, setDragOverImageIndex] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const customColorInputRef = useRef<HTMLInputElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const dragDataRef = useRef<{ imageIndex: number; startX: number; startY: number; startOffsetX: number; startOffsetY: number; currentOffsetX: number; currentOffsetY: number } | null>(null);
+  const dragImageIndexRef = useRef<number | null>(null);
   const renderIdRef = useRef(0);
   const cachedImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
 
@@ -110,6 +119,37 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     setImages((prev) => prev.filter((_, i) => i !== index));
     setImageOffsets((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const swapImages = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setImages((prev) => moveArrayItem(prev, fromIndex, toIndex));
+    setImageOffsets((prev) => moveArrayItem(prev, fromIndex, toIndex));
+  }, []);
+
+  const handleImageDragStart = useCallback((index: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    dragImageIndexRef.current = index;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  }, []);
+
+  const handleImageDragEnd = useCallback(() => {
+    dragImageIndexRef.current = null;
+    setDragOverImageIndex(null);
+  }, []);
+
+  const handleImageDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleImageDrop = useCallback((index: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const fromIndex = dragImageIndexRef.current;
+    if (fromIndex === null || fromIndex === index) return;
+    swapImages(fromIndex, index);
+    dragImageIndexRef.current = null;
+    setDragOverImageIndex(null);
+  }, [swapImages]);
 
   const drawPhotoInCell = (
     ctx: CanvasRenderingContext2D,
@@ -671,13 +711,32 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
 
                 <div className="space-y-4">
                   <div className="rounded-3xl border border-zinc-700/60 bg-zinc-950/60 p-4">
-                    <h3 className="text-sm font-semibold text-white mb-3">Images ({images.length})</h3>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">Images ({images.length})</h3>
+                        <p className="text-xs text-zinc-500">Drag images to reorder collage positions.</p>
+                      </div>
+                    </div>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {images.map((image, index) => (
                         <div
                           key={image.url}
-                          className="flex items-center gap-2 rounded-lg bg-zinc-800/50 p-2"
+                          draggable
+                          onDragStart={handleImageDragStart(index)}
+                          onDragEnd={handleImageDragEnd}
+                          onDragOver={handleImageDragOver}
+                          onDragEnter={() => setDragOverImageIndex(index)}
+                          onDragLeave={() => setDragOverImageIndex(null)}
+                          onDrop={handleImageDrop(index)}
+                          className={`flex items-center gap-2 rounded-lg p-2 transition ${
+                            dragOverImageIndex === index
+                              ? 'border border-amber-500 bg-amber-500/10'
+                              : 'bg-zinc-800/50'
+                          }`}
                         >
+                          <div className="flex h-10 w-10 items-center justify-center rounded bg-zinc-900 text-zinc-400 text-xs font-semibold">
+                            ≡
+                          </div>
                           <img
                             src={image.url}
                             alt={`Photo ${index + 1}`}
@@ -685,7 +744,25 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs text-white truncate">{image.file.name}</p>
-                            <p className="text-xs text-zinc-400">{index + 1}</p>
+                            <p className="text-xs text-zinc-400">Position {index + 1}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => swapImages(index, index - 1)}
+                              disabled={index === 0}
+                              className="px-2 py-1 rounded-lg text-xs bg-zinc-900 text-zinc-300 hover:text-white disabled:opacity-50"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => swapImages(index, index + 1)}
+                              disabled={index === images.length - 1}
+                              className="px-2 py-1 rounded-lg text-xs bg-zinc-900 text-zinc-300 hover:text-white disabled:opacity-50"
+                            >
+                              ↓
+                            </button>
                           </div>
                           <button
                             onClick={() => removeImage(index)}
