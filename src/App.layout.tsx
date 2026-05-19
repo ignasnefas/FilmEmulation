@@ -1184,6 +1184,7 @@ export default function AppLayout() {
         <NegativeConverterTool 
           isOpen={negativeConverterToolOpen} 
           onClose={() => setNegativeConverterToolOpen(false)}
+          onFileSelected={handleNegativeFileSelected}
         />
         <CollageMarkerTool 
           isOpen={collageToolOpen} 
