@@ -1,8 +1,18 @@
-# film1
+# TheFilmLab
 
-A React + Vite project with Tailwind CSS and a film-style image processor.
+TheFilmLab is a modern image editing application built with React, Vite, Tailwind CSS, and Electron.
+It supports both a browser-hosted web app and a native Windows desktop app with a production-ready build pipeline.
 
-## Getting Started
+## Features
+
+- Film-style image processing with RAW support via `libraw-wasm`
+- Grain, curves, color presets, framing, and overlays
+- Drag-and-drop image import using `react-dropzone`
+- Web version optimized for single-file deployment
+- Windows desktop app packaged with Electron and `electron-builder`
+- Separate web and Electron build workflows
+
+## Quick Start
 
 ```bash
 npm install
@@ -11,23 +21,89 @@ npm run dev
 
 Open http://localhost:5173 in your browser.
 
-## Scripts
+## Available Scripts
 
-- `npm run dev` - start development server
-- `npm run build` - production build (outputs to `dist/`)
-- `npm run preview` - locally preview production build
+- `npm run dev` - Start the Vite development server
+- `npm run preview` - Preview the production web build locally
+- `npm run build:web` - Build the web app to `dist/web/`
+- `npm run build:electron` - Build the Electron app assets
+- `npm run build:all` - Build both web and Electron outputs
+- `npm run electron:dev` - Build and launch the Electron desktop app for testing
+- `npm run electron:preview` - Launch the Electron app from the production build
+- `npm run dist:win` - Build a Windows installer and portable executable
+- `npm run dist:portable` - Build a portable Windows executable only
 
-## Additions
+## Development
 
-- `.gitignore` includes `node_modules/`, `dist/`, editor and OS files
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Run the web app:
+
+```bash
+npm run dev
+```
+
+3. Open your browser to:
+
+```text
+http://localhost:5173
+```
+
+## Production Build
+
+### Web Build
+
+```bash
+npm run build:web
+```
+
+The web build is emitted to `dist/web/` and is ready for static hosting.
+
+### Electron Desktop Build
+
+```bash
+npm run dist:win
+```
+
+This produces a Windows installer and a portable executable in `dist/`.
 
 ## Project Structure
 
-- `src/` - app source code
-- `src/App.tsx` - main app component
-- `src/filmProcessor.ts` - film filter logic
-- `src/grainEngine.ts` - film grain engine
-- `src/filmPresets.ts` - presets
+- `electron/`
+  - `main.ts` — Electron main process
+  - `preload.ts` — secure renderer preload script
+- `src/`
+  - `App.tsx` — main application component
+  - `App.layout.tsx` — layout and desktop download banner logic
+  - `filmProcessor.ts` — film processing and filter logic
+  - `grainEngine.ts` — film grain generation
+  - `components/` — UI components such as `DesktopDownloadBanner`
+  - `frames/`, `overlays/`, `utils/` — image resources and helpers
+- `scripts/` — production setup utilities
+- `.github/workflows/` — CI/CD workflows for web deployment and releases
+
+## Release Workflow
+
+1. Update `package.json` version.
+2. Commit changes.
+3. Create an annotated Git tag:
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin main --tags
+```
+
+4. GitHub Actions will build the Electron app and create release artifacts.
+
+## Notes
+
+- The app is configured for Windows desktop builds using `electron-builder`.
+- Electron builds require a Windows environment for `dist:win`.
+- The web app is designed for static hosting and can be deployed as a single-file bundle.
 
 ## License
 
