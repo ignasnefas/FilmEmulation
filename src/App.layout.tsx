@@ -424,7 +424,7 @@ export default function AppLayout() {
               aria-label="Open framing tool"
             >
               <FrameIcon />
-              <span className="hidden md:inline ml-1">Framer</span>
+              <span className="ml-1">Framer</span>
             </button>
             <button
               onClick={() => setNegativeConverterToolOpen(true)}
@@ -433,7 +433,7 @@ export default function AppLayout() {
               aria-label="Open negative converter"
             >
               📽️
-              <span className="hidden md:inline ml-1">Negative</span>
+              <span className="ml-1">Negative</span>
             </button>
             <button
               onClick={() => setCollageToolOpen(true)}
@@ -442,7 +442,7 @@ export default function AppLayout() {
               aria-label="Open collage maker"
             >
               🎨
-              <span className="hidden md:inline ml-1">Collage</span>
+              <span className="ml-1">Collage</span>
             </button>
             <button
               onClick={() => setIsAboutOpen(true)}
