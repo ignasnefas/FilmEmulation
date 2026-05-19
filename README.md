@@ -3,6 +3,8 @@
 TheFilmLab is a modern image editing application built with React, Vite, Tailwind CSS, and Electron.
 It supports both a browser-hosted web app and a native Windows desktop app with a production-ready build pipeline.
 
+![TheFilmLab screenshot](public/screenshot.png)
+
 ## Features
 
 - Film-style image processing with RAW support via `libraw-wasm`
