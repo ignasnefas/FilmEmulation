@@ -47,6 +47,8 @@ export interface FilmPreset {
   // Tone curve shape
   toeStrength: number;    // shadow roll-off 0-1
   shoulderStrength: number; // highlight roll-off 0-1
+  // UI visibility
+  negativeInvertOnly?: boolean; // only show in negative mode
 }
 
 export const filmPresets: FilmPreset[] = [
@@ -114,6 +116,7 @@ export const filmPresets: FilmPreset[] = [
     whiteBalance: 0,
     toeStrength: 0,
     shoulderStrength: 0,
+    negativeInvertOnly: true,
   },
   {
     id: 'invert-negative-warm',
@@ -146,6 +149,7 @@ export const filmPresets: FilmPreset[] = [
     whiteBalance: -0.15,
     toeStrength: 0,
     shoulderStrength: 0,
+    negativeInvertOnly: true,
   },
   {
     id: 'invert-negative-cool',
@@ -178,6 +182,7 @@ export const filmPresets: FilmPreset[] = [
     whiteBalance: 0.15,
     toeStrength: 0,
     shoulderStrength: 0,
+    negativeInvertOnly: true,
   },
   {
     id: 'invert-negative-bw',
@@ -210,6 +215,7 @@ export const filmPresets: FilmPreset[] = [
     whiteBalance: 0,
     toeStrength: 0,
     shoulderStrength: 0,
+    negativeInvertOnly: true,
   },
   // ═══════════════ COLOR NEGATIVE ═══════════════
   {

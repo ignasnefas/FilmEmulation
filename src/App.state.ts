@@ -1408,11 +1408,23 @@ export function useFilmLabState() {
     return filterType === 'custom' || (filterType === 'all' && showFavoritesOnly);
   }), [customPresets, filterType, showFavoritesOnly, favorites]);
 
+  // Detect if we're in negative mode (selected preset is a negative inversion preset)
+  const isNegativeMode = selectedPreset.negativeInvertOnly === true;
+
   const filteredPresets = useMemo(() => filmPresets.filter((preset) => {
     if (showFavoritesOnly && !favorites.includes(preset.id)) return false;
     if (filterType === 'custom') return false;
+    
+    // In negative mode, show ONLY negative inversion presets
+    if (isNegativeMode) {
+      return preset.negativeInvertOnly === true;
+    }
+    
+    // In regular mode, hide negative inversion presets
+    if (preset.negativeInvertOnly) return false;
+    
     return filterType === 'all' || preset.type === filterType;
-  }), [filterType, showFavoritesOnly, favorites]);
+  }), [filterType, showFavoritesOnly, favorites, isNegativeMode]);
 
   const displayedPresets = useMemo(() => [...customPresetItems, ...filteredPresets], [customPresetItems, filteredPresets]);
 
