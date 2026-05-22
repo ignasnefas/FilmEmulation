@@ -196,26 +196,26 @@ export default function CollageMarkerTool({ isOpen, onClose }: CollageMarkerTool
     height: number,
     offset: ImageOffset = { x: 0, y: 0 }
   ) => {
-    // Cover: crop to fit only
+    // Contain: preserve aspect ratio with letterboxing/pillarboxing
     const imgRatio = img.width / img.height;
     const cellRatio = width / height;
-    let srcX = 0,
-      srcY = 0,
-      srcWidth = img.width,
-      srcHeight = img.height;
+
+    let drawWidth = width;
+    let drawHeight = height;
+    let drawX = x;
+    let drawY = y;
 
     if (imgRatio > cellRatio) {
-      srcWidth = img.height * cellRatio;
-      srcX = (img.width - srcWidth) / 2 + offset.x;
+      // Image is wider: fit to width, center vertically
+      drawHeight = width / imgRatio;
+      drawY = y + (height - drawHeight) / 2;
     } else {
-      srcHeight = img.width / cellRatio;
-      srcY = (img.height - srcHeight) / 2 + offset.y;
+      // Image is taller: fit to height, center horizontally
+      drawWidth = height * imgRatio;
+      drawX = x + (width - drawWidth) / 2;
     }
 
-    // Clamp source coordinates to image bounds
-    srcX = Math.max(0, Math.min(srcX, img.width - srcWidth));
-    srcY = Math.max(0, Math.min(srcY, img.height - srcHeight));
-    ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, x, y, width, height);
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
   };
 
   const getEffectiveOffset = (imageIndex: number): ImageOffset => {
